@@ -16,37 +16,27 @@ public class NamedBlock {
     public final ParameterList parameters;
     public final ParserRuleContext context;
 
-    /**
-     * Wraps a list of statements in an NamedBlock object whose name is unused.
-     *
-     * @param statementList The list of statements
-     * @return A NamedBlock representing the
-     */
     public static NamedBlock anonymousBlock(StatementList statementList) {
-        return new NamedBlock(null, "", "", new ParameterList(), statementList);
+        return new NamedBlock(new NamedBlockParams.Builder(null, "", "", statementList).build());
     }
 
-    public NamedBlock (ParserRuleContext context, String onName, String endName, StatementList body) {
-        this(context, onName, endName, new ParameterList(), body);
-    }
-
-    public NamedBlock (ParserRuleContext context, String onName, String endName, ParameterList parameters, StatementList body) {
-        if (onName == null) {
-            throw new HtUncheckedSemanticException(new HtSyntaxException("Missing 'on' clause in handler definition.", context.getStart()));
+    public NamedBlock(NamedBlockParams params) {
+        if (params.getOnName() == null) {
+            throw new HtUncheckedSemanticException(new HtSyntaxException("Missing 'on' clause in handler definition.", params.getContext().getStart()));
         }
 
-        if (endName == null) {
-            throw new HtUncheckedSemanticException(new HtSyntaxException("Missing 'end' clause in handler definition.", context.getStart()));
+        if (params.getEndName() == null) {
+            throw new HtUncheckedSemanticException(new HtSyntaxException("Missing 'end' clause in handler definition.", params.getContext().getStart()));
         }
 
-        if (!onName.equalsIgnoreCase(endName)) {
-            throw new HtUncheckedSemanticException(new HtSyntaxException("Found 'end " + endName + "' but expected 'end " + onName + "'.", context.getStart()));
+        if (!params.getOnName().equalsIgnoreCase(params.getEndName())) {
+            throw new HtUncheckedSemanticException(new HtSyntaxException("Found 'end " + params.getEndName() + "' but expected 'end " + params.getOnName() + "'.", params.getContext().getStart()));
         }
 
-        this.name = onName;
-        this.statements = body;
-        this.parameters = parameters;
-        this.context = context;
+        this.name = params.getOnName();
+        this.statements = params.getBody();
+        this.parameters = params.getParameters();
+        this.context = params.getContext();
     }
 
     public Collection<Statement> findStatementsOnLine(int line) {

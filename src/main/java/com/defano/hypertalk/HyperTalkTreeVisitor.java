@@ -512,7 +512,9 @@ public class HyperTalkTreeVisitor extends HyperTalkBaseVisitor<Object> {
         StatementList statements = ctx.statementList() == null ? new StatementList() : (StatementList) visit(ctx.statementList());
         String onId = ctx.symbol().size() > 0 ? (String) visit(ctx.symbol(0)) : null;
         String endId = ctx.symbol().size() > 1 ? (String) visit(ctx.symbol(1)) : null;
-        return new NamedBlock(ctx, onId, endId, statements);
+
+        NamedBlockParams params = new NamedBlockParams.Builder(ctx, onId, endId, statements).build();
+        return new NamedBlock(params);
     }
 
     @Override
@@ -520,7 +522,11 @@ public class HyperTalkTreeVisitor extends HyperTalkBaseVisitor<Object> {
         StatementList statements = ctx.statementList() == null ? new StatementList() : (StatementList) visit(ctx.statementList());
         String onId = ctx.symbol().size() > 0 ? (String) visit(ctx.symbol(0)) : null;
         String endId = ctx.symbol().size() > 1 ? (String) visit(ctx.symbol(1)) : null;
-        return new NamedBlock(ctx, onId, endId, (ParameterList) visit(ctx.parameterList()), statements);
+
+        NamedBlockParams params = new NamedBlockParams.Builder(ctx, onId, endId, statements)
+                .parameters((ParameterList) visit(ctx.parameterList()))
+                .build();
+        return new NamedBlock(params);
     }
 
     @Override
