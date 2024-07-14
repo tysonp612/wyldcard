@@ -32,25 +32,11 @@ public class StackFormatConverter {
         this.progress = progress;
     }
 
-    /**
-     * Asynchronously converts a HyperCard stack file to a WyldCard document in the form of a {@link StackModel} object.
-     * <p>
-     * This method can take a while depending on the size of the stack being converted. It therefore provides two
-     * callbacks, one for indicating that the process has completed, the other for reporting progress (measured in terms
-     * of number of cards imported).
-     *
-     * @param stackFile The HyperCard stack file as produced by HyperCard in Mac Classic
-     * @param status    An observer of import status, indicating completion of the process with either a success or
-     *                  failure disposition.
-     * @param progress  An observer of import progress; useful when displaying a progress bar or similar indication of
-     *                  progress.
-     */
     public static void convert(File stackFile, ConversionStatusObserver status, ConversionProgressObserver progress) {
         if (progress == null || status == null) {
             throw new IllegalArgumentException("Conversion observer cannot be null.");
         }
 
-        // Nothing to do when file isn't specified
         if (stackFile != null) {
             StackFormatConverter importer = new StackFormatConverter(status, progress);
             Invoke.asynchronouslyOnWorkerThread(() -> importer.doConversion(stackFile));
@@ -97,7 +83,6 @@ public class StackFormatConverter {
 
     private void buildCard(ExecutionContext context, CardBlock cardBlock, StackModel stackModel) {
 
-        // Create card
         CardModel cardModel = new CardModelBuilder(stackModel)
                 .withId(cardBlock.getBlockId())
                 .withBackgroundId(cardBlock.getBkgndId())
@@ -110,20 +95,16 @@ public class StackFormatConverter {
                 .withScript(cardBlock.getScript())
                 .build();
 
-        // Create background (if does not exist)
         buildBackground(cardBlock.getBkgndBlock(), stackModel);
 
-        // Create all buttons and fields and on this card
         buildParts(cardBlock.getParts(), cardModel, cardBlock);
 
-        // Set card-contextual properties (unshared field text, button hilite, etc.)
         for (PartContentRecord pcr : cardBlock.getContents()) {
             applyUnsharedButtonHilite(context, pcr, cardModel);
             applyTextContents(context, pcr, cardModel, false);
             applyTextStyles(context, pcr, cardModel, cardBlock, false);
         }
 
-        // Set background-contextual properties (shared text styles)
         for (PartContentRecord pcr : cardBlock.getBkgndBlock().getContents()) {
             applyTextContents(context, pcr, cardModel, true);
             applyTextStyles(context, pcr, cardModel, cardBlock, true);
@@ -132,15 +113,6 @@ public class StackFormatConverter {
         stackModel.addCard(cardModel);
     }
 
-    /**
-     * Apply text style data from a given {@link PartContentRecord} to a field on a given card (or its background).
-     *
-     * @param context    The execution context
-     * @param pcr        The part content record providing style data
-     * @param cardModel  The model of the card that contains the field (or the background field)
-     * @param cardBlock  The HyperCard stack's {@link CardBlock} or {@link BackgroundBlock}
-     * @param sharedText When true, style applies to shared text, when false, style applies to unshared text.
-     */
     private void applyTextStyles(ExecutionContext context, PartContentRecord pcr, CardModel cardModel, CardLayerBlock cardBlock, boolean sharedText) {
         FieldModel field;
 
@@ -173,7 +145,6 @@ public class StackFormatConverter {
         if (pcr.isBackgroundPart()) {
             FieldModel field = cardModel.getBackgroundModel().getField(pcr.getRawPartId());
 
-            // Set un-shared text value
             if (field != null && (!sharedText || field.get(context, FieldModel.PROP_SHAREDTEXT).booleanValue())) {
                 field.setCurrentCardId(cardModel.getId());
                 field.set(context, FieldModel.PROP_TEXT, new Value(pcr.getText()));
@@ -181,19 +152,8 @@ public class StackFormatConverter {
         }
     }
 
-    /**
-     * Sets the hilite property of background buttons. Has no effect when invoked with a PartContentRecord that does
-     * not refer to a button or if the button does not exist on the card's background.
-     * <p>
-     * Background buttons may choose not to "share" their hilite state across cards. This allows, for example, a
-     * background layer checkbox to have different checked/unchecked values on each card in the background. This method
-     * applies the card-specific hilite value to such a button.
-     *
-     * @param pcr       The button's PartContentRecord.
-     * @param cardModel The model of the card whose hilite is being adjusted.
-     */
     private void applyUnsharedButtonHilite(ExecutionContext context, PartContentRecord pcr, CardModel cardModel) {
-        if (pcr.isBackgroundPart()) {   // Only applies to background buttons
+        if (pcr.isBackgroundPart()) {
             ButtonModel bm = cardModel.getBackgroundModel().getButton(pcr.getRawPartId());
 
             if (bm != null) {
@@ -206,7 +166,6 @@ public class StackFormatConverter {
     private void buildBackground(BackgroundBlock backgroundBlock, StackModel stackModel) {
         int backgroundId = backgroundBlock.getBlockId();
 
-        // Skip building background if it already exists
         if (stackModel.getBackground(backgroundId) != null) {
             return;
         }
@@ -221,7 +180,6 @@ public class StackFormatConverter {
                 .withScript(backgroundBlock.getScript())
                 .build();
 
-        // Create all buttons and fields
         buildParts(backgroundBlock.getParts(), backgroundModel, backgroundBlock);
 
         stackModel.addBackground(backgroundModel);
@@ -230,72 +188,75 @@ public class StackFormatConverter {
     private void buildParts(PartRecord[] parts, CardLayer parent, CardLayerBlock block) {
         for (int partNumber = 0; partNumber < parts.length; partNumber++) {
             PartRecord partRecord = parts[partNumber];
+            PartDimensions dimensions = partRecord.getDimensions();
+            PartProperties properties = partRecord.getProperties();
+
             if (partRecord.getPartType() == PartType.BUTTON) {
-                buildButton(partRecord, partNumber, parent, block);
+                buildButton(partRecord, dimensions, properties, partNumber, parent, block);
             } else {
-                buildField(partRecord, partNumber, parent, block);
+                buildField(partRecord, dimensions, properties, partNumber, parent, block);
             }
         }
     }
 
-    private void buildButton(PartRecord partRecord, int partNumber, CardLayer parent, CardLayerBlock block) {
+    private void buildButton(PartRecord partRecord, PartDimensions dimensions, PartProperties properties, int partNumber, CardLayer parent, CardLayerBlock block) {
 
         ButtonModel buttonModel = new ButtonModelBuilder(parent.getType().asOwner(), parent.getParentPartModel())
                 .withPartNumber(partNumber)
-                .withTop(partRecord.getTop())
-                .withLeft(partRecord.getLeft())
-                .withWidth(partRecord.getRight() - partRecord.getLeft())
-                .withHeight(partRecord.getBottom() - partRecord.getTop())
-                .withName(partRecord.getName())
+                .withTop(dimensions.getTop())
+                .withLeft(dimensions.getLeft())
+                .withWidth(dimensions.getRight() - dimensions.getLeft())
+                .withHeight(dimensions.getBottom() - dimensions.getTop())
+                .withName(properties.getName())
                 .withId(partRecord.getPartId())
-                .withPartStyle(partRecord.getStyle().hypertalkName())
+                .withPartStyle(properties.getStyle().hypertalkName())
                 .withFamily(partRecord.getFamily())
-                .withTextSize(partRecord.getTextSize())
-                .withTextFont(block.getStack().getBlock(FontTableBlock.class).getFont(partRecord.getTextFontId()).getFontName())
-                .withTextStyle(FontStyle.asHypertalkList(partRecord.getFontStyles()))
-                .withTextAlign(partRecord.getTextAlign().name())
-                .withIconId(partRecord.getIconId())
-                .withScript(partRecord.getScript())
+                .withTextSize(properties.getTextSize())
+                .withTextFont(block.getStack().getBlock(FontTableBlock.class).getFont(properties.getTextFontId()).getFontName())
+                .withTextStyle(FontStyle.asHypertalkList(properties.getFontStyles()))
+                .withTextAlign(properties.getTextAlign().name())
+                .withIconId(properties.getIconId())
+                .withScript(properties.getScript())
                 .withContents(block.getPartContents(partRecord.getPartId()).getText())
-                .withSelectedItem(partRecord.getFirstSelectedLine())
-                .withShowName(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.SHOW_NAME))
+                .withSelectedItem(properties.getFirstSelectedLine())
+                .withShowName(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.SHOW_NAME))
                 .withIsEnabled(Arrays.stream(partRecord.getFlags()).noneMatch(f -> f == PartFlag.DISABLED))
-                .withAutoHilite(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.AUTO_HILITE))
-                .withHilite(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.HILITE))
-                .withSharedHilite(Arrays.stream(partRecord.getExtendedFlags()).noneMatch(f -> f == ExtendedPartFlag.NO_SHARING_HILITE))
+                .withAutoHilite(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.AUTO_HILITE))
+                .withHilite(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.HILITE))
+                .withSharedHilite(Arrays.stream(properties.getExtendedFlags()).noneMatch(f -> f == ExtendedPartFlag.NO_SHARING_HILITE))
                 .withIsVisible(Arrays.stream(partRecord.getFlags()).noneMatch(f -> f == PartFlag.HIDDEN))
                 .build();
 
         parent.addPartModel(buttonModel);
     }
 
-    private void buildField(PartRecord partRecord, int partNumber, CardLayer parent, CardLayerBlock block) {
+    private void buildField(PartRecord partRecord, PartDimensions dimensions, PartProperties properties, int partNumber, CardLayer parent, CardLayerBlock block) {
 
         FieldModel fieldModel = new FieldModelBuilder(parent.getType().asOwner(), parent.getParentPartModel())
                 .withPartNumber(partNumber)
-                .withTop(partRecord.getTop())
-                .withLeft(partRecord.getLeft())
-                .withWidth(partRecord.getRight() - partRecord.getLeft())
-                .withHeight(partRecord.getBottom() - partRecord.getTop())
-                .withName(partRecord.getName())
+                .withTop(dimensions.getTop())
+                .withLeft(dimensions.getLeft())
+                .withWidth(dimensions.getRight() - dimensions.getLeft())
+                .withHeight(dimensions.getBottom() - dimensions.getTop())
+                .withName(properties.getName())
                 .withId(partRecord.getPartId())
-                .withPartStyle(partRecord.getStyle().name())
+                .withPartStyle(properties.getStyle().name())
                 .withIsVisible(Arrays.stream(partRecord.getFlags()).noneMatch(f -> f == PartFlag.HIDDEN))
                 .withDontWrap(Arrays.stream(partRecord.getFlags()).anyMatch(f -> f == PartFlag.DONT_WRAP))
                 .withDontSearch(Arrays.stream(partRecord.getFlags()).anyMatch(f -> f == PartFlag.DONT_SEARCH))
                 .withSharedText(Arrays.stream(partRecord.getFlags()).anyMatch(f -> f == PartFlag.SHARED_TEXT))
-                .withTextSize(partRecord.getTextSize())
-                .withTextFont(block.getStack().getBlock(FontTableBlock.class).getFont(partRecord.getTextFontId()).getFontName())
-                .withTextStyle(FontStyle.asHypertalkList(partRecord.getFontStyles()))
-                .withTextAlign(partRecord.getTextAlign().name())
+                .withTextSize(properties.getTextSize())
+                .withTextFont(block.getStack().getBlock(FontTableBlock.class).getFont(properties.getTextFontId()).getFontName())
+                .withTextStyle(FontStyle.asHypertalkList(properties.getFontStyles()))
+                .withTextAlign(properties.getTextAlign().name())
                 .withText(block.getPartContents(partRecord.getPartId()).getText())
                 .withAutoTab(Arrays.stream(partRecord.getFlags()).anyMatch(f -> f == PartFlag.AUTO_TAB))
                 .withLockText(Arrays.stream(partRecord.getFlags()).anyMatch(f -> f == PartFlag.LOCK_TEXT))
-                .withAutoSelect(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.AUTO_SELECT))
-                .withShowLines(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.SHOW_LINES))
-                .withWideMargins(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.WIDE_MARGINS))
-                .withMultipleLines(Arrays.stream(partRecord.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.MULTIPLE_LINES))
-                .withScript(partRecord.getScript())
+                .withAutoSelect(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.AUTO_SELECT))
+                .withShowLines(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.SHOW_LINES))
+                .withWideMargins(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.WIDE_MARGINS))
+                .withMultipleLines(Arrays.stream(properties.getExtendedFlags()).anyMatch(f -> f == ExtendedPartFlag.MULTIPLE_LINES))
+                .withScript(properties.getScript())
                 .build();
 
         parent.addPartModel(fieldModel);
@@ -336,7 +297,6 @@ public class StackFormatConverter {
             }
         }
 
-        // Some stacks may not have a page block (ostensibly, this implies that the stack has no marked cards...?)
         return false;
     }
 
