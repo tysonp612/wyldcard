@@ -1,11 +1,15 @@
 package com.defano.hypertalk.ast.model.specifier;
 
 import com.defano.hypertalk.ast.model.enums.LengthAdjective;
+import com.defano.hypertalk.ast.model.enums.Preposition;
+import com.defano.wyldcard.WyldCard;
 import com.defano.wyldcard.part.model.PartModel;
 import com.defano.hypertalk.ast.expression.Expression;
 import com.defano.hypertalk.ast.expression.container.MenuItemExp;
 import com.defano.hypertalk.ast.expression.container.PartExp;
 import com.defano.hypertalk.ast.model.chunk.Chunk;
+import com.defano.hypertalk.delegate.MenuPropertiesDelegate;
+import com.defano.hypertalk.delegate.ChunkPropertiesDelegate;
 import com.defano.hypertalk.exception.HtException;
 import com.defano.hypertalk.exception.HtSemanticException;
 import com.defano.wyldcard.runtime.ExecutionContext;
@@ -50,34 +54,28 @@ public class PropertySpecifier {
         return property;
     }
 
-    /**
-     * Returns the name of the specified property with the specified adjective applied (where applicable). For example,
-     * applying {@link LengthAdjective#SHORT} to the property 'name' yields 'short name'
-     * <p>
-     * Certain properties (like name and id) support length adjectives (like 'long', 'short' or 'abbrev') when
-     * applied to certain objects. This method attempts to compute an applied property name given a property
-     * and adjective.
-     * <p>
-     * Note that objects may override the default adjective. For example, when requesting 'the name of' a button
-     * or field, 'the abbrev name' is actually returned.
-     *
-     * @return The adjective-applied name of the specified property.
-     * @param context The execution context.
-     */
+    public void setProperty(ExecutionContext context, Expression expression) throws HtException {
+        if (isGlobalPropertySpecifier(context)) {
+            WyldCard.getInstance().getWyldCardPart().trySet(context, getProperty(), expression.evaluate(context));
+        } else if (isMenuItemPropertySpecifier(context)) {
+            MenuPropertiesDelegate.setProperty(context, getProperty(), expression.evaluate(context), getMenuItem(context));
+        } else if (isChunkPropertySpecifier(context)) {
+            ChunkPropertiesDelegate.setProperty(context, getProperty(), expression.evaluate(context), getChunk(context), getPartExp(context).evaluateAsSpecifier(context));
+        } else {
+            context.setProperty(getProperty(), getPartExp(context).evaluateAsSpecifier(context), Preposition.INTO, null, expression.evaluate(context));
+        }
+    }
+
     public String getAdjectiveAppliedPropertyName(ExecutionContext context) {
         PartModel model = getPartModel(context);
 
-        // Apply adjective only to properties that support it
         if (model != null && model.isAdjectiveSupportedProperty(property)) {
             if (lengthAdjective == LengthAdjective.DEFAULT) {
                 return model.getDefaultAdjectiveForProperty(property).apply(property);
             } else {
                 return lengthAdjective.apply(property);
             }
-        }
-
-        // Ignore adjective on properties that don't support it (i.e., 'the long width' is the same as 'the width')
-        else {
+        } else {
             return property;
         }
     }
@@ -91,13 +89,6 @@ public class PropertySpecifier {
         }
     }
 
-    /**
-     * Gets the model of the part specified, or null if this specifier either refers to a non-existent part or
-     * doesn't specify a part type at all.
-     *
-     * @return The model of the part specified by this object, or null
-     * @param context The execution context.
-     */
     public PartModel getPartModel(ExecutionContext context) {
         if (partExp == null) {
             return null;
