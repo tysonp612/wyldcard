@@ -1228,13 +1228,28 @@ public class Value implements StyledComparable<Value>, Serializable {
     @Override
     public int compareTo(Value o) {
         if (this.isInteger() && o.isInteger()) {
-            return Integer.compare(this.integerValue(), o.integerValue());
-        } else if (this.isNumber() && o.isNumber()) {
-            return Double.compare(this.doubleValue(), o.doubleValue());
-        } else {
-            return toString().toLowerCase().trim().compareTo(o.toString().toLowerCase().trim());
+            return compareIntegers(o);
         }
+
+        if (this.isNumber() && o.isNumber()) {
+            return compareNumbers(o);
+        }
+
+        return compareStrings(o);
     }
+
+    private int compareIntegers(Value o) {
+        return Integer.compare(this.integerValue(), o.integerValue());
+    }
+
+    private int compareNumbers(Value o) {
+        return Double.compare(this.doubleValue(), o.doubleValue());
+    }
+
+    private int compareStrings(Value o) {
+        return toString().toLowerCase().trim().compareTo(o.toString().toLowerCase().trim());
+    }
+
 
     /**
      * {@inheritDoc}
@@ -1244,28 +1259,42 @@ public class Value implements StyledComparable<Value>, Serializable {
         switch (style) {
             case INTERNATIONAL:
             case TEXT:
-                return toString().compareTo(to.toString());
+                return compareText(to);
             case NUMERIC:
-                return Double.compare(this.doubleValue(), to.doubleValue());
+                return compareNumeric(to);
             case DATE_TIME:
-                Date thisDate = DateUtils.dateOf(this);
-                Date toDateTime = DateUtils.dateOf(to);
+                return compareDateTime(to);
+            default:
+                throw new IllegalArgumentException("Bug! Unimplemented comparison style.");
+        }
+    }
 
-                if (thisDate == null && toDateTime == null) {
-                    return 0;
-                }
+    private int compareText(Value to) {
+        return this.toString().compareTo(to.toString());
+    }
 
-                if (thisDate == null) {
-                    return 1;
-                }
+    private int compareNumeric(Value to) {
+        return Double.compare(this.doubleValue(), to.doubleValue());
+    }
 
-                if (toDateTime == null) {
-                    return -1;
-                }
+    private int compareDateTime(Value to) {
+        Date thisDate = DateUtils.dateOf(this);
+        Date toDateTime = DateUtils.dateOf(to);
 
-                return thisDate.compareTo(toDateTime);
+        if (thisDate == null && toDateTime == null) {
+            return 0;
         }
 
-        throw new IllegalArgumentException("Bug! Unimplemented comparison style.");
+        if (thisDate == null) {
+            return 1;
+        }
+
+        if (toDateTime == null) {
+            return -1;
+        }
+
+        return thisDate.compareTo(toDateTime);
     }
+
+
 }

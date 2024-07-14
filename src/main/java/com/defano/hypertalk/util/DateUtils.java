@@ -88,15 +88,23 @@ public class DateUtils {
     }
 
     public static Date dateOf(Value value) {
-        for (ConvertibleDateFormat thisFormat : ConvertibleDateFormat.values()) {
-            Date d = dateOf(value, thisFormat);
-            if (d != null) {
-                return d;
+        return parseDate(value, ConvertibleDateFormat.values());
+    }
+
+    private static Date parseDate(Value value, ConvertibleDateFormat[] formats) {
+        for (ConvertibleDateFormat format : formats) {
+            Date date = tryParseDate(value, format);
+            if (date != null) {
+                return date;
             }
         }
-
         return null;
     }
+
+    private static Date tryParseDate(Value value, ConvertibleDateFormat format) {
+        return dateOf(value, format);
+    }
+
 
     /**
      * Merges two dates together. Returns a date equal to first but with certain date fields overwritten with values
